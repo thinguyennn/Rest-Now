@@ -9,7 +9,7 @@ final class RestNowSession: ObservableObject {
     }
 
     private let workDuration: TimeInterval
-    private let breakDuration: TimeInterval
+    let breakDuration: TimeInterval
 
     @Published private(set) var phase: Phase
     @Published private(set) var remainingSeconds: TimeInterval

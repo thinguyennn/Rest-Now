@@ -42,26 +42,28 @@ struct BreakOverlayView: View {
                     .font(.system(size: 44, weight: .medium, design: .monospaced))
                     .foregroundColor(.white)
 
-                Button {
-                    session.skipBreak()
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "chevron.right.2")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Skip Break")
-                            .font(.system(size: 16, weight: .semibold))
+                if session.breakDuration - session.remainingSeconds >= 60 {
+                    Button {
+                        session.skipBreak()
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "chevron.right.2")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Skip Break")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.gray.opacity(0.35))
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                        )
+                        .clipShape(Capsule())
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.gray.opacity(0.35))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                    )
-                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding()
         }

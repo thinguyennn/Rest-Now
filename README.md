@@ -4,6 +4,9 @@ A lightweight macOS menu bar app that reminds you to take breaks and rest your e
 
 **Website:** [https://www.restnow.xyz/](https://www.restnow.xyz/)
 
+<em>This tool is intentionally opinionated and simple. I'm not interested in adding lots of options.</em>
+
+
 <div align="center">
   <img src="https://imagedelivery.net/j_zap_BNzPItCoMGioj9aA/d4d01a08-efea-4d2e-9a2d-e3abbf70e200/public" alt="RestNow Settings" width="600">
   <br><br>

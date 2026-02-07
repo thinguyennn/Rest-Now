@@ -1,6 +1,6 @@
 cask "restnow" do
   version "1.0.0"
-  sha256 "ded8bcd0458ba303dd8f7684b014df8cc682f5ac622d460fd010445b344f93b1"
+  sha256 "b4f170e155811039d9674d0e42fe03b9b4ea787aa036098af9135d90afbc1783"
 
   url "https://github.com/krjadhav/Rest-Now/releases/download/v#{version}/RestNow.dmg"
   name "RestNow"
