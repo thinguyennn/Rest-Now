@@ -13,11 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusItem: NSStatusItem?
 
+    private var timeInfoItem: NSMenuItem?
     private var startBreakItem: NSMenuItem?
     private var skipBreakItem: NSMenuItem?
     private var pauseCycleItem: NSMenuItem?
     private var resetItem: NSMenuItem?
 
+    /// We only subscribe to phase/pause changes (infrequent), not per-second ticks.
     private var cancellables = Set<AnyCancellable>()
 
     private var onboardingWindow: NSWindow?
@@ -70,11 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let overlayManager = BreakOverlayWindowManager(session: session)
         self.overlayManager = overlayManager
 
+        // --- Status bar: icon only, no title text ---
         let item: NSStatusItem
         if let existing = statusItem {
             item = existing
         } else {
-            item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             statusItem = item
         }
 
@@ -88,13 +91,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .withSymbolConfiguration(symbolConfig)
             image?.isTemplate = true
             button.image = image
-            button.imagePosition = .imageLeft
-            button.imageScaling = .scaleProportionallyDown
+            button.imagePosition = .imageOnly
+            button.title = "" // No text in menu bar — zero per-second updates
         }
 
-        item.button?.title = session.menuBarTitle
-
+        // --- Build menu ---
         let menu = NSMenu()
+        menu.delegate = self  // Update time info only when menu is opened
+
+        // Dynamic time info shown inside the menu (computed on demand)
+        let timeInfo = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        timeInfo.isEnabled = false
+        menu.addItem(timeInfo)
+        self.timeInfoItem = timeInfo
+
+        menu.addItem(.separator())
 
         let pauseCycle = NSMenuItem(title: "Pause Cycle", action: #selector(togglePauseCycle), keyEquivalent: "p")
         pauseCycle.target = self
@@ -113,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(startBreak)
         self.startBreakItem = startBreak
 
-        let skipBreak = NSMenuItem(title: "Skip Break", action: #selector(skipBreak), keyEquivalent: "s")
+        let skipBreak = NSMenuItem(title: "Skip Break", action: #selector(self.skipBreak), keyEquivalent: "s")
         skipBreak.target = self
         menu.addItem(skipBreak)
         self.skipBreakItem = skipBreak
@@ -130,11 +141,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         item.menu = menu
 
-        Publishers.CombineLatest3(session.$phase, session.$remainingSeconds, session.$isPaused)
+        // --- Subscribe ONLY to phase and pause changes (very infrequent) ---
+        Publishers.CombineLatest(session.$phase, session.$isPaused)
             .receive(on: RunLoop.main)
-            .sink { [weak self] phase, _, isPaused in
+            .sink { [weak self] phase, isPaused in
                 guard let self else { return }
-                self.statusItem?.button?.title = session.menuBarTitle
                 self.pauseCycleItem?.title = isPaused ? "Resume Cycle" : "Pause Cycle"
 
                 switch phase {
@@ -256,5 +267,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
 
         settingsWindow = window
+    }
+}
+
+// MARK: - NSMenuDelegate (compute time only when user opens the menu)
+
+extension AppDelegate: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        timeInfoItem?.title = session?.menuTimeDescription ?? "Not running"
     }
 }

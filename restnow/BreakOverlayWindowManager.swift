@@ -8,12 +8,18 @@ final class BreakOverlayWindowManager {
 
     private let fadeDuration: TimeInterval = 0.45
 
+    /// Track screen config to detect when we need to rebuild windows.
+    private var lastScreenCount: Int = 0
+
     init(session: RestNowSession) {
         self.session = session
     }
 
     func show() {
-        guard windows.isEmpty else {
+        let currentScreenCount = NSScreen.screens.count
+
+        // Reuse existing windows if screen configuration hasn't changed.
+        if !windows.isEmpty && currentScreenCount == lastScreenCount {
             windows.forEach { window in
                 window.orderFrontRegardless()
                 NSAnimationContext.runAnimationGroup { context in
@@ -21,8 +27,13 @@ final class BreakOverlayWindowManager {
                     window.animator().alphaValue = 1
                 }
             }
+            NSApp.activate(ignoringOtherApps: true)
+            windows.first?.makeKeyAndOrderFront(nil)
             return
         }
+
+        // Tear down old windows if screen config changed.
+        tearDownWindows()
 
         let level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
 
@@ -54,6 +65,8 @@ final class BreakOverlayWindowManager {
             windows.append(window)
         }
 
+        lastScreenCount = currentScreenCount
+
         NSApp.activate(ignoringOtherApps: true)
 
         for (idx, window) in windows.enumerated() {
@@ -71,10 +84,8 @@ final class BreakOverlayWindowManager {
     }
 
     func hide() {
-        let windowsToHide = windows
-        windows.removeAll()
-
-        windowsToHide.forEach { window in
+        // Fade out but keep windows alive for reuse.
+        windows.forEach { window in
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = fadeDuration
                 window.animator().alphaValue = 0
@@ -82,5 +93,12 @@ final class BreakOverlayWindowManager {
                 window.orderOut(nil)
             }
         }
+    }
+
+    /// Releases all windows (called when screen configuration changes or on teardown).
+    private func tearDownWindows() {
+        windows.forEach { $0.orderOut(nil) }
+        windows.removeAll()
+        lastScreenCount = 0
     }
 }

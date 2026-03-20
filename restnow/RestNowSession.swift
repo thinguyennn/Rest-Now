@@ -8,14 +8,25 @@ final class RestNowSession: ObservableObject {
         case rest
     }
 
-    private let workDuration: TimeInterval
+    let workDuration: TimeInterval
     let breakDuration: TimeInterval
 
     @Published private(set) var phase: Phase
     @Published private(set) var remainingSeconds: TimeInterval
     @Published private(set) var isPaused: Bool = false
 
+    /// Lightweight signal incremented each rest-tick to trigger SwiftUI updates
+    /// without mutating `remainingSeconds` or `phaseStartDate` every second.
+    @Published private(set) var restTickSignal: UInt = 0
+
+    /// Fires only when the work phase ends (one-shot) or every second during rest (for overlay countdown).
     private var timer: Timer?
+
+    /// Timestamp when we last started/resumed the timer, used to compute remaining time accurately.
+    private var phaseStartDate: Date?
+
+    /// Pre-loaded sound to avoid filesystem I/O on every bell.
+    private let bellSound = NSSound(named: NSSound.Name("Submarine"))
 
     init(
         workDuration: TimeInterval = 2 * 5,
@@ -25,28 +36,33 @@ final class RestNowSession: ObservableObject {
         self.breakDuration = breakDuration
         self.phase = .work
         self.remainingSeconds = workDuration
-        startTimer()
+        scheduleTimer()
     }
 
     deinit {
         timer?.invalidate()
     }
 
+    // MARK: - Public Actions
+
     func resetCycle() {
         phase = .work
         remainingSeconds = workDuration
+        scheduleTimer()
     }
 
     func startBreakNow() {
         phase = .rest
         remainingSeconds = breakDuration
         playBell()
+        scheduleTimer()
     }
 
     func skipBreak() {
         phase = .work
         remainingSeconds = workDuration
         playBell()
+        scheduleTimer()
     }
 
     func togglePause() {
@@ -60,48 +76,100 @@ final class RestNowSession: ObservableObject {
     func pauseCycle() {
         guard !isPaused else { return }
         isPaused = true
+        // Snapshot remaining time before stopping
+        if let start = phaseStartDate {
+            let elapsed = Date().timeIntervalSince(start)
+            remainingSeconds = max(remainingSeconds - elapsed, 0)
+        }
         timer?.invalidate()
         timer = nil
+        phaseStartDate = nil
     }
 
     func resumeCycle() {
         guard isPaused else { return }
         isPaused = false
-        startTimer()
+        scheduleTimer()
     }
 
-    var menuBarTitle: String {
-        let baseTitle: String
+    // MARK: - Menu Info (computed on demand, no per-second cost)
+
+    /// Static text for the menu item — computed only when the menu is opened.
+    var menuTimeDescription: String {
+        let remaining = currentRemainingSeconds
+        let formatted = Self.formattedTime(remaining)
+
         switch phase {
         case .work:
-            baseTitle = formattedTime(remainingSeconds)
+            if isPaused { return "Paused – \(formatted) until break" }
+            return "\(formatted) until break"
         case .rest:
-            baseTitle = "Break " + formattedTime(remainingSeconds)
+            if isPaused { return "Paused – Break \(formatted)" }
+            return "Break – \(formatted) remaining"
         }
-
-        if isPaused {
-            return "Paused " + baseTitle
-        }
-
-        return baseTitle
     }
 
-    private func startTimer() {
+    /// Accurate remaining seconds computed from the start-date, no timer needed.
+    var currentRemainingSeconds: TimeInterval {
+        if isPaused { return max(remainingSeconds, 0) }
+        guard let start = phaseStartDate else { return max(remainingSeconds, 0) }
+        let elapsed = Date().timeIntervalSince(start)
+        return max(remainingSeconds - elapsed, 0)
+    }
+
+    // MARK: - Shared Formatter
+
+    static func formattedTime(_ seconds: TimeInterval) -> String {
+        let total = max(Int(seconds), 0)
+        let minutes = total / 60
+        let secs = total % 60
+        return String(format: "%02d:%02d", minutes, secs)
+    }
+
+    // MARK: - Timer Scheduling
+
+    private func scheduleTimer() {
         timer?.invalidate()
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tick()
+        timer = nil
+        phaseStartDate = Date()
+
+        switch phase {
+        case .work:
+            // ONE-SHOT timer — fires only when rest should begin.
+            // Zero CPU cost in between. Allows macOS App Nap.
+            let t = Timer(
+                timeInterval: remainingSeconds,
+                repeats: false
+            ) { [weak self] _ in
+                self?.switchPhase()
+            }
+            t.tolerance = 1.0 // Allow macOS to coalesce with other timers
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
+
+        case .rest:
+            // 1-second repeating timer for overlay countdown display.
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                self?.restTick()
+            }
+            t.tolerance = 0.3
+            RunLoop.main.add(t, forMode: .common)
+            timer = t
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
     }
 
-    private func tick() {
+    private func restTick() {
         guard !isPaused else { return }
-        guard remainingSeconds > 0 else {
+
+        // Use currentRemainingSeconds (computed from the original phaseStartDate)
+        // instead of mutating remainingSeconds + phaseStartDate every tick.
+        if currentRemainingSeconds <= 0 {
             switchPhase()
-            return
+        } else {
+            // Increment a lightweight signal to trigger SwiftUI re-render.
+            // No @Published TimeInterval mutation, no Date() allocation.
+            restTickSignal &+= 1
         }
-        remainingSeconds -= 1
     }
 
     private func switchPhase() {
@@ -113,14 +181,9 @@ final class RestNowSession: ObservableObject {
         }
     }
 
-    private func playBell() {
-        NSSound(named: NSSound.Name("Submarine"))?.play()
-    }
+    // MARK: - Sound
 
-    private func formattedTime(_ seconds: TimeInterval) -> String {
-        let total = max(Int(seconds), 0)
-        let minutes = total / 60
-        let secs = total % 60
-        return String(format: "%02d:%02d", minutes, secs)
+    private func playBell() {
+        bellSound?.play()
     }
 }
