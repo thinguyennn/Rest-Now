@@ -29,8 +29,8 @@ final class RestNowSession: ObservableObject {
     private let bellSound = NSSound(named: NSSound.Name("Submarine"))
 
     init(
-        workDuration: TimeInterval = 2 * 5,
-        breakDuration: TimeInterval = 1 * 5
+        workDuration: TimeInterval = 20 * 60,
+        breakDuration: TimeInterval = 10 * 60
     ) {
         self.workDuration = workDuration
         self.breakDuration = breakDuration
