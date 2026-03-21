@@ -54,7 +54,7 @@ final class RestNowSession: ObservableObject {
     func startBreakNow() {
         phase = .rest
         remainingSeconds = breakDuration
-        sendMediaPlayPauseKey()
+        pauseMediaPlayback()
         playBell()
         scheduleTimer()
     }
@@ -187,38 +187,34 @@ final class RestNowSession: ObservableObject {
     private func playBell() {
         bellSound?.play()
     }
+    // MARK: - Media Pause
 
-    // MARK: - Media Key Simulation
-
-    /// Simulates pressing the play/pause media key to stop any currently playing audio.
-    /// Uses a lightweight CGEvent post — no subprocess, no AppleScript, sub-microsecond.
-    private func sendMediaPlayPauseKey() {
-        let nxKeyTypePlay: Int32 = 16
-        let nxSubtypeAuxControlButtons: Int16 = 8
-        let keyDownState: Int32 = 0xA
-        let keyUpState: Int32 = 0xB
-
-        func postMediaKey(state: Int32) {
-            let data1 = Int((nxKeyTypePlay << 16) | (state << 8))
-
-            guard let event = NSEvent.otherEvent(
-                with: .systemDefined,
-                location: .zero,
-                modifierFlags: [],
-                timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: 0,
-                context: nil,
-                subtype: nxSubtypeAuxControlButtons,
-                data1: data1,
-                data2: -1
-            ) else {
-                return
-            }
-
-            event.cgEvent?.post(tap: .cghidEventTap)
-        }
-
-        postMediaKey(state: keyDownState)
-        postMediaKey(state: keyUpState)
+    /// Sends a dedicated "pause" command to the system's now-playing media session.
+    /// - If something is playing → pauses it.
+    /// - If nothing is playing → does nothing (no risk of starting playback).
+    /// Cost: one indirect function call, zero allocation.
+    private func pauseMediaPlayback() {
+        _ = MediaRemoteBridge.sendPause?(1, nil)  // 1 = kMRPause
     }
+}
+
+// MARK: - MediaRemote Private Framework Bridge
+
+private typealias MRSendCommand = @convention(c) (Int, CFDictionary?) -> Bool
+
+private enum MediaRemoteBridge {
+    /// Loaded once (lazy, thread-safe). Looks up MRMediaRemoteSendCommand from the
+    /// private MediaRemote framework used by macOS Control Center.
+    static let sendPause: MRSendCommand? = {
+        guard let bundle = CFBundleCreate(
+            kCFAllocatorDefault,
+            URL(fileURLWithPath: "/System/Library/PrivateFrameworks/MediaRemote.framework") as CFURL
+        ) else { return nil }
+
+        guard let ptr = CFBundleGetFunctionPointerForName(
+            bundle, "MRMediaRemoteSendCommand" as CFString
+        ) else { return nil }
+
+        return unsafeBitCast(ptr, to: MRSendCommand.self)
+    }()
 }
