@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let workSecondsRaw = UserDefaults.standard.double(forKey: DefaultsKey.workDurationSeconds)
         let restSecondsRaw = UserDefaults.standard.double(forKey: DefaultsKey.restDurationSeconds)
 
-        let allowed: Set<Int> = [5, 10, 30, 60]
+        let allowed: Set<Int> = [1, 3, 5, 10, 20, 30, 60]
 
         let initialWork = allowed.contains(Int(workSecondsRaw)) ? Int(workSecondsRaw) : 30
         let initialRest = allowed.contains(Int(restSecondsRaw)) ? Int(restSecondsRaw) : 10

@@ -55,7 +55,7 @@ struct BreakOverlayView: View {
                     .font(.system(size: 44, weight: .medium, design: .monospaced))
                     .foregroundColor(.white)
 
-                if session.breakDuration - remaining >= 60 {
+                if session.breakDuration - remaining >= 180 {
                     Button {
                         session.skipBreak()
                     } label: {

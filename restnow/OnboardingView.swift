@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    private let options: [Int] = [1, 5, 10, 20, 30, 60]
+    private let options: [Int] = [1, 3, 5, 10, 20, 30, 60]
 
     private let title: String
     private let subtitle: String

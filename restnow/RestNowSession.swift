@@ -54,6 +54,7 @@ final class RestNowSession: ObservableObject {
     func startBreakNow() {
         phase = .rest
         remainingSeconds = breakDuration
+        sendMediaPlayPauseKey()
         playBell()
         scheduleTimer()
     }
@@ -185,5 +186,39 @@ final class RestNowSession: ObservableObject {
 
     private func playBell() {
         bellSound?.play()
+    }
+
+    // MARK: - Media Key Simulation
+
+    /// Simulates pressing the play/pause media key to stop any currently playing audio.
+    /// Uses a lightweight CGEvent post — no subprocess, no AppleScript, sub-microsecond.
+    private func sendMediaPlayPauseKey() {
+        let nxKeyTypePlay: Int32 = 16
+        let nxSubtypeAuxControlButtons: Int16 = 8
+        let keyDownState: Int32 = 0xA
+        let keyUpState: Int32 = 0xB
+
+        func postMediaKey(state: Int32) {
+            let data1 = Int((nxKeyTypePlay << 16) | (state << 8))
+
+            guard let event = NSEvent.otherEvent(
+                with: .systemDefined,
+                location: .zero,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: 0,
+                context: nil,
+                subtype: nxSubtypeAuxControlButtons,
+                data1: data1,
+                data2: -1
+            ) else {
+                return
+            }
+
+            event.cgEvent?.post(tap: .cghidEventTap)
+        }
+
+        postMediaKey(state: keyDownState)
+        postMediaKey(state: keyUpState)
     }
 }
