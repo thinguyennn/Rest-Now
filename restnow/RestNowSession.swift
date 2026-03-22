@@ -144,7 +144,7 @@ final class RestNowSession: ObservableObject {
             ) { [weak self] _ in
                 self?.switchPhase()
             }
-            t.tolerance = 1.0 // Allow macOS to coalesce with other timers
+            t.tolerance = 2.0 // Allow macOS to coalesce with other timers
             RunLoop.main.add(t, forMode: .common)
             timer = t
 
@@ -153,7 +153,7 @@ final class RestNowSession: ObservableObject {
             let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 self?.restTick()
             }
-            t.tolerance = 0.3
+            t.tolerance = 0.5
             RunLoop.main.add(t, forMode: .common)
             timer = t
         }
