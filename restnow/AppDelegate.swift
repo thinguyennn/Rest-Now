@@ -1,11 +1,26 @@
 import AppKit
 import Combine
+import Foundation
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private enum DefaultsKey {
         static let workDurationSeconds = "restnow.workDurationSeconds"
         static let restDurationSeconds = "restnow.restDurationSeconds"
+    }
+
+    private enum SystemState {
+        static let screenLocked = Notification.Name("com.apple.screenIsLocked")
+        static let screenUnlocked = Notification.Name("com.apple.screenIsUnlocked")
+    }
+
+    private enum SystemEvent {
+        case screenLocked
+        case screenUnlocked
+        case systemWillSleep
+        case systemDidWake
+        case displaysDidSleep
+        case displaysDidWake
     }
 
     private var session: RestNowSession?
@@ -24,9 +39,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var onboardingWindow: NSWindow?
     private var settingsWindow: NSWindow?
+    private var isScreenLocked = false
+    private var isSystemAsleep = false
+    private var areDisplaysAsleep = false
+    private var workspaceObservers: [NSObjectProtocol] = []
+    private var distributedObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        configureSystemStateObservers()
 
         if let work = UserDefaults.standard.object(forKey: DefaultsKey.workDurationSeconds) as? Double,
            let rest = UserDefaults.standard.object(forKey: DefaultsKey.restDurationSeconds) as? Double {
@@ -58,6 +79,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { workspaceCenter.removeObserver($0) }
+        let distributedCenter = DistributedNotificationCenter.default()
+        distributedObservers.forEach { distributedCenter.removeObserver($0) }
+    }
+
+    private func configureSystemStateObservers() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceObservers = [
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.willSleepNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.systemWillSleep)
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.systemDidWake)
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.screensDidSleepNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.displaysDidSleep)
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.screensDidWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.displaysDidWake)
+            }
+        ]
+
+        let distributedCenter = DistributedNotificationCenter.default()
+        distributedObservers = [
+            distributedCenter.addObserver(
+                forName: SystemState.screenLocked,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.screenLocked)
+            },
+            distributedCenter.addObserver(
+                forName: SystemState.screenUnlocked,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleSystemEvent(.screenUnlocked)
+            }
+        ]
+    }
+
+    private var isSystemInteractive: Bool {
+        !isScreenLocked && !isSystemAsleep && !areDisplaysAsleep
+    }
+
+    private func handleSystemEvent(_ event: SystemEvent) {
+        let wasInteractive = isSystemInteractive
+
+        switch event {
+        case .screenLocked:
+            isScreenLocked = true
+        case .screenUnlocked:
+            isScreenLocked = false
+        case .systemWillSleep:
+            isSystemAsleep = true
+        case .systemDidWake:
+            isSystemAsleep = false
+        case .displaysDidSleep:
+            areDisplaysAsleep = true
+        case .displaysDidWake:
+            areDisplaysAsleep = false
+        }
+
+        let isInteractive = isSystemInteractive
+
+        if wasInteractive && !isInteractive {
+            overlayManager?.hide()
+            session?.suspendForSystemState()
+        } else if !wasInteractive && isInteractive {
+            session?.resumeFromSystemState()
+            updateOverlayVisibility()
+        } else if !isInteractive {
+            overlayManager?.hide()
+        }
+    }
+
+    private func updateOverlayVisibility() {
+        guard let session else { return }
+
+        switch session.phase {
+        case .work:
+            overlayManager?.hide()
+        case .rest:
+            if isSystemInteractive {
+                overlayManager?.show()
+            } else {
+                overlayManager?.hide()
+            }
+        }
     }
 
     private func startSession(workDuration: TimeInterval, restDuration: TimeInterval) {
@@ -152,16 +282,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .work:
                     self.skipBreakItem?.isEnabled = false
                     self.startBreakItem?.isEnabled = true
-                    overlayManager.hide()
                 case .rest:
                     self.skipBreakItem?.isEnabled = true
                     self.startBreakItem?.isEnabled = false
-                    overlayManager.show()
                 }
+
+                self.updateOverlayVisibility()
             }
             .store(in: &cancellables)
 
         skipBreakItem?.isEnabled = false
+        updateOverlayVisibility()
     }
 
     private func showOnboarding() {

@@ -15,6 +15,9 @@ final class RestNowSession: ObservableObject {
     @Published private(set) var remainingSeconds: TimeInterval
     @Published private(set) var isPaused: Bool = false
 
+    /// True when the cycle is suspended due to system lock/sleep.
+    @Published private(set) var isSystemSuspended: Bool = false
+
     /// Lightweight signal incremented each rest-tick to trigger SwiftUI updates
     /// without mutating `remainingSeconds` or `phaseStartDate` every second.
     @Published private(set) var restTickSignal: UInt = 0
@@ -90,6 +93,28 @@ final class RestNowSession: ObservableObject {
     func resumeCycle() {
         guard isPaused else { return }
         isPaused = false
+        guard !isSystemSuspended else { return }
+        scheduleTimer()
+    }
+
+    func suspendForSystemState() {
+        guard !isSystemSuspended else { return }
+        isSystemSuspended = true
+
+        if !isPaused, let start = phaseStartDate {
+            let elapsed = Date().timeIntervalSince(start)
+            remainingSeconds = max(remainingSeconds - elapsed, 0)
+        }
+
+        timer?.invalidate()
+        timer = nil
+        phaseStartDate = nil
+    }
+
+    func resumeFromSystemState() {
+        guard isSystemSuspended else { return }
+        isSystemSuspended = false
+        guard !isPaused else { return }
         scheduleTimer()
     }
 
@@ -112,7 +137,7 @@ final class RestNowSession: ObservableObject {
 
     /// Accurate remaining seconds computed from the start-date, no timer needed.
     var currentRemainingSeconds: TimeInterval {
-        if isPaused { return max(remainingSeconds, 0) }
+        if isPaused || isSystemSuspended { return max(remainingSeconds, 0) }
         guard let start = phaseStartDate else { return max(remainingSeconds, 0) }
         let elapsed = Date().timeIntervalSince(start)
         return max(remainingSeconds - elapsed, 0)
@@ -132,6 +157,12 @@ final class RestNowSession: ObservableObject {
     private func scheduleTimer() {
         timer?.invalidate()
         timer = nil
+
+        guard !isSystemSuspended else {
+            phaseStartDate = nil
+            return
+        }
+
         phaseStartDate = Date()
 
         switch phase {
@@ -160,7 +191,7 @@ final class RestNowSession: ObservableObject {
     }
 
     private func restTick() {
-        guard !isPaused else { return }
+        guard !isPaused, !isSystemSuspended else { return }
 
         // Use currentRemainingSeconds (computed from the original phaseStartDate)
         // instead of mutating remainingSeconds + phaseStartDate every tick.
