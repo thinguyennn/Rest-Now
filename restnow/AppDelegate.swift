@@ -302,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 subtitle: "Choose your work and rest durations.",
                 primaryButtonTitle: "Start",
                 initialWorkMinutes: 30,
-                initialRestMinutes: 10
+                initialRestDuration: 10 * 60
             ) { [weak self] workDuration, restDuration in
                 guard let self else { return }
 
@@ -352,8 +352,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let allowed: Set<Int> = [1, 3, 5, 10, 20, 30, 60]
 
-        let initialWork = allowed.contains(Int(workSecondsRaw)) ? Int(workSecondsRaw) : 30
-        let initialRest = allowed.contains(Int(restSecondsRaw)) ? Int(restSecondsRaw) : 10
+        let savedWorkMinutes = Int(workSecondsRaw / 60)
+        let savedRestDuration = restSecondsRaw > 0 ? restSecondsRaw : 10 * 60
+        let initialWork = allowed.contains(savedWorkMinutes) ? savedWorkMinutes : 30
 
         let hostingView = NSHostingView(
             rootView: OnboardingView(
@@ -361,7 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 subtitle: "Update your work and rest durations.",
                 primaryButtonTitle: "Save",
                 initialWorkMinutes: initialWork,
-                initialRestMinutes: initialRest,
+                initialRestDuration: savedRestDuration,
                 showsProjectLink: true
             ) { [weak self] workDuration, restDuration in
                 guard let self else { return }

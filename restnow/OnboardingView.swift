@@ -2,6 +2,8 @@ import SwiftUI
 
 struct OnboardingView: View {
     private let options: [Int] = [1, 3, 5, 10, 20, 30, 60]
+    private static let minimumRestMinutes = 1
+    private static let shortRestDuration: TimeInterval = 20
 
     private let title: String
     private let subtitle: String
@@ -10,6 +12,7 @@ struct OnboardingView: View {
 
     @State private var selectedWorkMinutes: Int
     @State private var selectedRestMinutes: Int
+    @State private var usesShortRest: Bool
 
     let onCommit: (_ workDuration: TimeInterval, _ restDuration: TimeInterval) -> Void
 
@@ -18,7 +21,7 @@ struct OnboardingView: View {
         subtitle: String = "Choose your work and rest durations.",
         primaryButtonTitle: String = "Start",
         initialWorkMinutes: Int = 30,
-        initialRestMinutes: Int = 10,
+        initialRestDuration: TimeInterval = 10 * 60,
         showsProjectLink: Bool = false,
         onCommit: @escaping (_ workDuration: TimeInterval, _ restDuration: TimeInterval) -> Void
     ) {
@@ -28,7 +31,8 @@ struct OnboardingView: View {
         self.showsProjectLink = showsProjectLink
         self.onCommit = onCommit
         _selectedWorkMinutes = State(initialValue: initialWorkMinutes)
-        _selectedRestMinutes = State(initialValue: initialRestMinutes)
+        _selectedRestMinutes = State(initialValue: max(Int(initialRestDuration / 60), Self.minimumRestMinutes))
+        _usesShortRest = State(initialValue: initialRestDuration == Self.shortRestDuration)
     }
 
     var body: some View {
@@ -48,13 +52,46 @@ struct OnboardingView: View {
                 .pickerStyle(.segmented)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Picker("Rest Duration", selection: $selectedRestMinutes) {
-                    ForEach(options, id: \.self) { value in
-                        Text("\(value)m").tag(value)
-                    }
+            HStack {
+                Text("Rest Duration")
+
+                Spacer()
+
+                Button("20 sec") {
+                    usesShortRest = true
                 }
-                .pickerStyle(.segmented)
+                .buttonStyle(.bordered)
+                .tint(usesShortRest ? .accentColor : .secondary)
+
+                TextField(
+                    "Minutes",
+                    value: Binding(
+                        get: { selectedRestMinutes },
+                        set: { newValue in
+                            selectedRestMinutes = newValue
+                            usesShortRest = false
+                        }
+                    ),
+                    format: .number
+                )
+                .multilineTextAlignment(.trailing)
+                .frame(width: 56)
+
+                Stepper(
+                    "Adjust rest duration",
+                    value: Binding(
+                        get: { selectedRestMinutes },
+                        set: { newValue in
+                            selectedRestMinutes = newValue
+                            usesShortRest = false
+                        }
+                    ),
+                    in: Self.minimumRestMinutes...Int.max
+                )
+                .labelsHidden()
+
+                Text("minutes")
+                    .foregroundStyle(.secondary)
             }
 
             if showsProjectLink {
@@ -74,9 +111,16 @@ struct OnboardingView: View {
                 Spacer()
 
                 Button(primaryButtonTitle) {
-                    onCommit(TimeInterval(selectedWorkMinutes * 60), TimeInterval(selectedRestMinutes * 60))
+                    let restMinutes = max(selectedRestMinutes, Self.minimumRestMinutes)
+                    let restDuration = usesShortRest ? Self.shortRestDuration : TimeInterval(restMinutes * 60)
+                    onCommit(TimeInterval(selectedWorkMinutes * 60), restDuration)
                 }
                 .keyboardShortcut(.defaultAction)
+            }
+        }
+        .onChange(of: selectedRestMinutes) { _, newValue in
+            if newValue < Self.minimumRestMinutes {
+                selectedRestMinutes = Self.minimumRestMinutes
             }
         }
         .padding(20)
