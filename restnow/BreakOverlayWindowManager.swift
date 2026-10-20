@@ -5,6 +5,9 @@ import CoreGraphics
 final class BreakOverlayWindowManager {
     private let session: RestNowSession
     private var windows: [NSWindow] = []
+    private var previousApplication: NSRunningApplication?
+    private var isVisible = false
+    private var visibilityGeneration: UInt = 0
 
     private let fadeDuration: TimeInterval = 0.45
 
@@ -17,6 +20,15 @@ final class BreakOverlayWindowManager {
 
     func show() {
         let currentScreenCount = NSScreen.screens.count
+        guard !isVisible || currentScreenCount != lastScreenCount else { return }
+
+        if !isVisible,
+           let application = NSWorkspace.shared.frontmostApplication,
+           application.processIdentifier != NSRunningApplication.current.processIdentifier {
+            previousApplication = application
+        }
+        isVisible = true
+        visibilityGeneration &+= 1
 
         // Reuse existing windows if screen configuration hasn't changed.
         if !windows.isEmpty && currentScreenCount == lastScreenCount {
@@ -83,15 +95,38 @@ final class BreakOverlayWindowManager {
         }
     }
 
-    func hide() {
-        // Fade out but keep windows alive for reuse.
-        windows.forEach { window in
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = fadeDuration
-                window.animator().alphaValue = 0
-            } completionHandler: {
-                window.orderOut(nil)
+    func hide(restoreFocus: Bool = true) {
+        guard isVisible else { return }
+        isVisible = false
+        visibilityGeneration &+= 1
+        let generation = visibilityGeneration
+        let application = previousApplication
+        if restoreFocus {
+            previousApplication = nil
+        }
+
+        // Wait for every screen to fade before returning focus.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = fadeDuration
+            windows.forEach { $0.animator().alphaValue = 0 }
+        } completionHandler: {
+            // A new break must not be hidden by an earlier fade completion.
+            guard self.visibilityGeneration == generation else { return }
+            self.windows.forEach { $0.orderOut(nil) }
+
+            guard restoreFocus,
+                  NSApp.isActive,
+                  let application,
+                  !application.isTerminated else { return }
+
+            // Leave focus on settings or another Rest Now window, if opened.
+            if let keyWindow = NSApp.keyWindow,
+               !self.windows.contains(where: { $0 === keyWindow }) {
+                return
             }
+
+            NSApp.yieldActivation(to: application)
+            application.activate(options: [])
         }
     }
 

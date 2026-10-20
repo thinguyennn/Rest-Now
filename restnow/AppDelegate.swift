@@ -165,13 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let isInteractive = isSystemInteractive
 
         if wasInteractive && !isInteractive {
-            overlayManager?.hide()
+            overlayManager?.hide(restoreFocus: false)
             session?.suspendForSystemState()
         } else if !wasInteractive && isInteractive {
             session?.resumeFromSystemState()
             updateOverlayVisibility()
         } else if !isInteractive {
-            overlayManager?.hide()
+            overlayManager?.hide(restoreFocus: false)
         }
     }
 
@@ -185,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if isSystemInteractive {
                 overlayManager?.show()
             } else {
-                overlayManager?.hide()
+                overlayManager?.hide(restoreFocus: false)
             }
         }
     }
